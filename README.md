@@ -44,57 +44,62 @@ Creates a simplified diagram focusing only on pipeline dependencies:
 python generate_pipeline_diagram.py --input_folder <folder_with_csv_files>
 ```
 
-## Workflow
+# DETools
 
-1. First, parse the ARM template:
+This repository contains scripts for parsing Azure Data Factory (ADF) ARM templates and generating pipeline diagrams, database diagrams, and more.
+
+## Scripts
+
+- `parse_arm_pipelines.py`: Extracts pipeline, activity, trigger, and dependency details from an ADF ARM template JSON and outputs CSVs.
+- `generate_pipeline_diagram.py`: Generates pipeline diagrams from CSVs.
+- `generate_dbdiagram.py`: Generates database diagrams from CSVs.
+- `generate_dag_from_adf_csv.py`: Generates DAGs from ADF CSVs.
+
+## Usage
+
+### Extracting ADF Pipeline and Trigger Details
+
 ```bash
-python parse_arm_pipelines.py --arm_template template.json
+python3 parse_arm_pipelines.py --arm_template <path-to-arm-template-directory>
 ```
 
-2. Then generate either:
-   - Full diagram with all dependencies:
-   ```bash
-   python generate_dbdiagram.py --input_folder adf_parsed_output
-   ```
-   - Or pipeline-only diagram:
-   ```bash
-   python generate_pipeline_diagram.py --input_folder adf_parsed_output
-   ```
+This will look for `ARMTemplateForFactory.json` in the specified directory and output CSVs to a subdirectory called `adf_parsed_output`.
 
-3. Copy the content of the generated `.txt` file and paste it at [dbdiagram.io](https://dbdiagram.io/d)
+#### Optional Output Directory
 
-## Output Files
+You can specify a custom output directory for the CSV files:
 
-- `adf_parsed_output/adf_pipeline_activities.csv`: Activity details
-- `adf_parsed_output/adf_pipelines.csv`: Pipeline dependencies
-- `adf_parsed_output/dbdiagram_schema.txt`: Full diagram schema
-- `adf_parsed_output/pipeline_dependencies.txt`: Pipeline-only diagram schema
-
-## Dependencies
-
-Required Python packages:
 ```bash
-pip install argparse
+python3 parse_arm_pipelines.py --arm_template <path-to-arm-template-directory> --out <output-directory>
 ```
 
-## Notes
+### Output CSVs
 
-- The diagrams are generated in DBML format compatible with [dbdiagram.io](https://dbdiagram.io)
-- Color coding in diagrams:
-  - Green: Source/Input datasets
-  - Blue: Processing/Intermediate datasets
-  - Orange: Sink/Output datasets
-- Pipeline relationships show the flow of data and execution dependencies
-- Dataset tables include primary keys for proper relationship mapping
+- `adf_pipelines.csv`: Pipeline-level details
+- `adf_pipeline_activities.csv`: Activity-level details
+- `adf_triggers.csv`: Trigger details (name, type, schedule, frequency, interval, etc.)
 
-## Contributing
+### Trigger Extraction
 
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a new Pull Request
+Trigger details are now extracted, including:
+
+- **Trigger name**: e.g., `TR_AAS_PAUSE_NE` (parsed from ARM expressions like `[concat(parameters('factoryName'), '/TR_AAS_PAUSE_NE')]`)
+- **Trigger type**: e.g., `ScheduleTrigger`, `TumblingWindowTrigger`, etc.
+- **Trigger schedule**: Recurrence schedule, frequency, interval, start time, time zone, and more.
+- **Pipelines**: Pipelines associated with each trigger.
+
+See the `adf_triggers.csv` for all extracted trigger fields.
+
+## Requirements
+
+- Python 3.6+
+
+## Example
+
+```bash
+python3 parse_arm_pipelines.py --arm_template /path/to/your/ADF/ARMTemplateForFactory.json
+```
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT

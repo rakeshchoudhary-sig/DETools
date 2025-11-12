@@ -33,10 +33,11 @@ def to_plain_str(obj: Any) -> str:
     except Exception:
         return str(obj)
 
-def extract_pipeline_name(raw_name: str) -> str:
+def extract_name_from_arm_expression(raw_name: str) -> str:
     """
-    Try to resolve pipeline name from ARM resource.name expressions such as:
+    Extract name from ARM resource.name expressions such as:
       "[concat(parameters('factoryName'), '/PL_SN_AAS_RESUME')]"
+      "[concat(parameters('factoryName'), '/TR_AAS_PAUSE_NE')]"
     Fallback to raw_name if parsing fails.
     """
     if not isinstance(raw_name, str):
@@ -50,6 +51,14 @@ def extract_pipeline_name(raw_name: str) -> str:
         return m.group(1).strip()
     # fallback strip brackets
     return raw_name.strip("[]'\" ")
+
+def extract_pipeline_name(raw_name: str) -> str:
+    """
+    Try to resolve pipeline name from ARM resource.name expressions such as:
+      "[concat(parameters('factoryName'), '/PL_SN_AAS_RESUME')]"
+    Fallback to raw_name if parsing fails.
+    """
+    return extract_name_from_arm_expression(raw_name)
 
 def normalize_depends_on(dep: Any) -> List[str]:
     """
@@ -186,11 +195,65 @@ def extract_activities(pipeline_name: str, activities: List[Dict[str, Any]]) -> 
         rows.append(row)
     return rows
 
+def extract_triggers(triggers_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Extract trigger details from ARM template triggers.
+    """
+    rows = []
+    for trigger in triggers_list or []:
+        # Extract trigger name from "[concat(parameters('factoryName'), '/TR_AAS_PAUSE_NE')]"
+        raw_trigger_name = trigger.get('name', '')
+        trigger_name = extract_name_from_arm_expression(raw_trigger_name)
+        
+        props = trigger.get('properties', {}) or {}
+        trigger_type = props.get('type', '')  # e.g., 'ScheduleTrigger', 'TumblingWindowTrigger', 'EventTrigger'
+        runtime_state = props.get('runtimeState', '')
+        annotations = props.get('annotations', [])
+        
+        # Extract pipelines linked to this trigger
+        pipelines = props.get('pipelines', []) or []
+        pipeline_names = []
+        for pl in pipelines:
+            if isinstance(pl, dict):
+                pl_ref = pl.get('pipelineReference', {})
+                if isinstance(pl_ref, dict):
+                    pipeline_names.append(pl_ref.get('referenceName', ''))
+        
+        # Extract schedule details based on trigger type
+        type_properties = props.get('typeProperties', {}) or {}
+        recurrence = type_properties.get('recurrence', {})
+        frequency = recurrence.get('frequency', '')
+        interval = recurrence.get('interval', '')
+        start_time = recurrence.get('startTime', '')
+        time_zone = recurrence.get('timeZone', '')
+        schedule = recurrence.get('schedule', {})
+        
+        # Extract schedule details
+        schedule_str = to_plain_str(schedule) if schedule else ''
+        
+        row = {
+            'trigger_name': trigger_name,
+            'trigger_type': trigger_type,
+            'runtime_state': runtime_state,
+            'frequency': frequency,
+            'interval': interval,
+            'start_time': start_time,
+            'time_zone': time_zone,
+            'schedule': schedule_str.replace('\n', ' ').strip(),
+            'pipelines': '|'.join(pipeline_names),
+            'pipeline_count': len(pipeline_names),
+            'annotations': safe_json_str(annotations),
+            'type_properties': to_plain_str(type_properties).replace('\n', ' ').strip()
+        }
+        rows.append(row)
+    return rows
+
 def parse_arm_pipelines(arm_path: str) -> Dict[str, Any]:
     doc = load_json(arm_path)
     resources = doc.get('resources', [])
     pipelines_info = []
     activities_info = []
+    triggers_info = []
 
     for res in resources:
         rtype = res.get('type', '')
@@ -225,16 +288,24 @@ def parse_arm_pipelines(arm_path: str) -> Dict[str, Any]:
             acts = props.get('activities', []) or []
             activities_rows = extract_activities(pipeline_name, acts)
             activities_info.extend(activities_rows)
+        
+        # Extract triggers
+        if rtype == 'Microsoft.DataFactory/factories/triggers' or rtype.endswith('/triggers'):
+            trigger_list = [res]
+            triggers_rows = extract_triggers(trigger_list)
+            triggers_info.extend(triggers_rows)
 
     return {
         'pipelines': pipelines_info,
-        'activities': activities_info
+        'activities': activities_info,
+        'triggers': triggers_info
     }
 
 def write_csvs(parsed: Dict[str, Any], out_dir: str) -> None:
     os.makedirs(out_dir, exist_ok=True)
     pipelines_csv = os.path.join(out_dir, 'adf_pipelines.csv')
     activities_csv = os.path.join(out_dir, 'adf_pipeline_activities.csv')
+    triggers_csv = os.path.join(out_dir, 'adf_triggers.csv')
 
     # pipelines
     with open(pipelines_csv, 'w', newline='', encoding='utf-8') as f:
@@ -258,23 +329,44 @@ def write_csvs(parsed: Dict[str, Any], out_dir: str) -> None:
             for a in parsed['activities']:
                 writer.writerow(a)
 
+    # triggers
+    if parsed.get('triggers'):
+        with open(triggers_csv, 'w', newline='', encoding='utf-8') as f:
+            fieldnames = [
+                'trigger_name','trigger_type','runtime_state','frequency','interval',
+                'start_time','time_zone','schedule','pipelines','pipeline_count','annotations','type_properties'
+            ]
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for t in parsed['triggers']:
+                writer.writerow(t)
+
     print(f"Wrote pipelines -> {pipelines_csv}")
     print(f"Wrote activities -> {activities_csv}")
+    if parsed.get('triggers'):
+        print(f"Wrote triggers -> {triggers_csv}")
 
 def main():
     parser = argparse.ArgumentParser(description="Extract ADF pipeline details from ARM template JSON.")
-    parser.add_argument('arm_template', nargs='?', default=os.path.join('trinity-product-supernova-databricks/pipelines','ARMTemplateForFactory.json'),
-                        help='Path to ARM template JSON file (default: trinity-product-supernova-databricks/pipelines/ARMTemplateForFactory.json)')
-    parser.add_argument('--out', '-o', default='adf_parsed_output', help='Output directory for CSV files')
+    #fetch the arm template path from argument, if not passed then exit
+    parser.add_argument('--arm_template', required=True, help='Path to ARM template JSON file')
+    parser.add_argument('--out', '-o', default=None, help='Output directory for CSV files')
     args = parser.parse_args()
+    
+    #join armtemplate file name ARMTemplateForFactory to the path
+    arm_template_name = 'ARMTemplateForFactory.json'
+    arm_path = os.path.join(os.path.dirname(args.arm_template), arm_template_name)
 
-    arm_path = args.arm_template
+    #adf_parsed_output in the arm template directory
+    adf_parsed_output = os.path.join(os.path.dirname(arm_path), 'adf_parsed_output')
+    output_dir = args.out if args.out else adf_parsed_output
+
     if not os.path.exists(arm_path):
         print(f"ARM template not found: {arm_path}")
         sys.exit(1)
 
     parsed = parse_arm_pipelines(arm_path)
-    write_csvs(parsed, args.out)
+    write_csvs(parsed, output_dir)
 
 if __name__ == '__main__':
     main()
