@@ -1,0 +1,8 @@
+# remove all output and template files
+adf_consolidated_output/
+ARMTemplateForFactory.json
+ARMTemplateParametersForFactory.json
+# local files
+temp.txt
+.DS_Store
+.vscode/
