@@ -4,7 +4,17 @@ A collection of Python scripts to analyze and visualize Azure Data Factory (ADF)
 
 ## Scripts Overview
 
-### 1. `parse_arm_pipelines.py`
+### 1. `extract_arm_consolidated.py`
+Extracts and consolidates various Azure Data Factory (ADF) resource details from an ARM template into a single Excel workbook with multiple sheets.
+
+```bash
+python extract_arm_consolidated.py --arm_template <path_to_arm_template_or_directory>
+```
+
+Output:
+- `adf_consolidated_output.xlsx`: An Excel file containing sheets for factory info, global parameters, integration runtimes, linked services, datasets, pipelines, activities, triggers, and resource dependencies.
+
+### 2. `parse_arm_pipelines.py`
 Parses ARM templates to extract pipeline information and generates CSV files containing:
 - Pipeline activities
 - Pipeline dependencies
@@ -50,12 +60,29 @@ This repository contains scripts for parsing Azure Data Factory (ADF) ARM templa
 
 ## Scripts
 
+- `extract_arm_consolidated.py`: Extracts and consolidates ADF resource details from an ARM template into a single Excel workbook.
 - `parse_arm_pipelines.py`: Extracts pipeline, activity, trigger, and dependency details from an ADF ARM template JSON and outputs CSVs.
 - `generate_pipeline_diagram.py`: Generates pipeline diagrams from CSVs.
 - `generate_dbdiagram.py`: Generates database diagrams from CSVs.
 - `generate_dag_from_adf_csv.py`: Generates DAGs from ADF CSVs.
 
 ## Usage
+
+### Extracting Consolidated ARM Template Data
+
+```bash
+python3 extract_arm_consolidated.py --arm_template <path-to-arm-template-json-file-or-directory>
+```
+
+This script takes an ARM template JSON file (e.g., `ARMTemplateForFactory.json`) or a directory containing it, and outputs a consolidated Excel workbook named `adf_consolidated_output.xlsx` to a subdirectory called `adf_consolidated_output`.
+
+#### Optional Output Directory
+
+You can specify a custom output directory for the Excel file:
+
+```bash
+python3 extract_arm_consolidated.py --arm_template <path-to-arm-template-json-file-or-directory> --out <output-directory>
+```
 
 ### Extracting ADF Pipeline and Trigger Details
 
