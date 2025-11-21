@@ -162,6 +162,33 @@ def parse_arm_template(doc: Dict[str, Any]) -> Dict[str, List[Dict]]:
         'triggers': triggers, 'resource_dependencies': dependencies
     }
 
+#def main():
+#    parser = argparse.ArgumentParser(description="Extract ARM template to a consolidated Excel file.")
+#    parser.add_argument('--arm_template', required=True, help='Path to ARM template JSON file or its directory')
+#    parser.add_argument('--out', '-o', default=None, help='Output directory for the Excel file')
+#    args = parser.parse_args()
+#    
+#    arm_path = args.arm_template
+#    if os.path.isdir(arm_path):
+#        arm_path = os.path.join(arm_path, 'ARMTemplateForFactory.json')
+#
+#    if not os.path.exists(arm_path):
+#        print(f"Error: ARM template not found at {arm_path}", file=sys.stderr)
+#        sys.exit(1)
+#
+#    output_dir = args.out if args.out else os.path.join(os.path.dirname(arm_path), 'adf_consolidated_output')
+#    os.makedirs(output_dir, exist_ok=True)
+#    
+#    print(f"Parsing ARM template: {arm_path}")
+#    doc = load_json(arm_path)
+#    
+#    parsed_data = parse_arm_template(doc)
+#
+def get_factory_name(doc: Dict[str, Any]) -> str:
+    """Extracts the factory name from the ARM template document."""
+    factory_name_param = doc.get('parameters', {}).get('factoryName', {})
+    return factory_name_param.get('defaultValue', 'unknown_factory')
+
 def main():
     parser = argparse.ArgumentParser(description="Extract ARM template to a consolidated Excel file.")
     parser.add_argument('--arm_template', required=True, help='Path to ARM template JSON file or its directory')
@@ -181,10 +208,10 @@ def main():
     
     print(f"Parsing ARM template: {arm_path}")
     doc = load_json(arm_path)
-    
     parsed_data = parse_arm_template(doc)
-    
-    output_excel_path = os.path.join(output_dir, 'adf_consolidated_output.xlsx')
+    factory_name = get_factory_name(doc)
+    output_file_name = f"{factory_name}_components.xlsx"
+    output_excel_path = os.path.join(output_dir, output_file_name)
     print(f"\n📊 Writing consolidated data to: {output_excel_path}\n")
 
     with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
